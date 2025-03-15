@@ -1,1 +1,11 @@
+FROM python:3.10
+WORKDIR /app
+COPY requirments.txt ./
+RUN pip install --no-cache-dir -r requirments.txt
+# Copy your src folder with api.py
+COPY src/ .
+# Copy the environment variables file
+COPY .env .
+EXPOSE 8080
+CMD ["python", "api.py"]
 
