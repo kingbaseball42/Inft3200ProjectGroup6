@@ -1,0 +1,71 @@
+name: Deploy Full-Stack App to AWS ECS (SDK v3)
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  ECS_CLUSTER: ${{ secrets.ECS_CLUSTER }}
+  ECR_REPOSITORY_FRONTEND: ${{ secrets.ECR_REPOSITORY_FRONTEND }}
+  ECR_REPOSITORY_BACKEND: ${{ secrets.ECR_REPOSITORY_BACKEND }}
+  ECS_SERVICE_FRONTEND: ${{ secrets.ECS_SERVICE_FRONTEND }}
+  ECS_SERVICE_BACKEND: ${{ secrets.ECS_SERVICE_BACKEND }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      # Set up Node.js so we can run our custom scripts
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      # Configure AWS credentials using GitHub Secrets
+      - name: Configure AWS Credentials
+        run: |
+          mkdir -p ~/.aws
+          echo "[default]" > ~/.aws/credentials
+          echo "aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_ID }}" >> ~/.aws/credentials
+          echo "aws_secret_access_key=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> ~/.aws/credentials
+          if [ -n "${{ secrets.AWS_SESSION_TOKEN }}" ]; then
+              echo "aws_session_token=${{ secrets.AWS_SESSION_TOKEN }}" >> ~/.aws/credentials
+          fi
+          echo "[default]" > ~/.aws/config
+          echo "region=${{ secrets.AWS_REGION }}" >> ~/.aws/config
+
+      # Install necessary Node.js dependencies for our custom scripts
+      - name: Install Dependencies for Scripts
+        run: npm install @aws-sdk/client-ecr @aws-sdk/client-ecs yargs
+
+      # Log in to ECR using the AWS SDK v3 in our custom script
+      - name: ECR Login using AWS SDK v3
+        run: node scripts/ecr-login.js
+
+      # Build and push the Frontend Docker image
+      - name: Build and Push Frontend Docker Image
+        run: |
+          docker build -t ${{ secrets.ECR_REPOSITORY_FRONTEND }} ./frontend
+          docker tag ${{ secrets.ECR_REPOSITORY_FRONTEND }}:latest ${{ secrets.ECR_REPOSITORY_FRONTEND }}:latest
+          docker push ${{ secrets.ECR_REPOSITORY_FRONTEND }}:latest
+
+      # Build and push the Backend Docker image
+      - name: Build and Push Backend Docker Image
+        run: |
+          docker build -t ${{ secrets.ECR_REPOSITORY_BACKEND }} ./backend
+          docker tag ${{ secrets.ECR_REPOSITORY_BACKEND }}:latest ${{ secrets.ECR_REPOSITORY_BACKEND }}:latest
+          docker push ${{ secrets.ECR_REPOSITORY_BACKEND }}:latest
+
+      # Deploy updated Frontend ECS service using our custom script (AWS SDK v3)
+      - name: Deploy to ECS - Frontend
+        run: node scripts/ecs-update.js --service ${{ secrets.ECS_SERVICE_FRONTEND }}
+
+      # Deploy updated Backend ECS service using our custom script (AWS SDK v3)
+      - name: Deploy to ECS - Backend
+        run: node scripts/ecs-update.js --service ${{ secrets.ECS_SERVICE_BACKEND }}
